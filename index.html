@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Hábitos">
+<title>Mis hábitos</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f0;
+    color: #1a1a1a;
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 1.5rem 1rem; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+  .title { font-size: 20px; font-weight: 600; }
+  .nav { display: flex; align-items: center; gap: 6px; }
+  .nav button { background: none; border: none; cursor: pointer; font-size: 22px; color: #555; padding: 4px 8px; border-radius: 8px; }
+  .nav button:hover { background: #e8e8e3; }
+  .nav button:disabled { opacity: 0.3; cursor: default; }
+  .day-label { font-size: 13px; color: #666; min-width: 130px; text-align: center; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+  .stat { background: #fff; border-radius: 12px; padding: 12px; text-align: center; border: 1px solid #e5e5e0; }
+  .stat-n { font-size: 22px; font-weight: 600; color: #1a1a1a; }
+  .stat-l { font-size: 11px; color: #888; margin-top: 2px; }
+  .habit-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #fff; border: 1px solid #e5e5e0; border-radius: 14px; margin-bottom: 10px; }
+  .check-btn { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ccc; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; transition: all 0.15s; }
+  .check-btn.done { background: #1D9E75; border-color: #1D9E75; color: white; }
+  .check-btn.fail { background: #E24B4A; border-color: #E24B4A; color: white; }
+  .habit-name { flex: 1; font-size: 15px; }
+  .streak { font-size: 12px; color: #888; }
+  .del-btn { background: none; border: none; cursor: pointer; font-size: 18px; color: #ccc; padding: 4px; border-radius: 6px; }
+  .del-btn:hover { color: #E24B4A; background: #fff0f0; }
+  .add-row { display: flex; gap: 8px; margin-top: 1rem; }
+  .add-row input { flex: 1; padding: 10px 14px; border: 1px solid #e5e5e0; border-radius: 12px; font-size: 15px; background: #fff; outline: none; }
+  .add-row input:focus { border-color: #1D9E75; }
+  .add-btn { padding: 10px 18px; background: #1D9E75; color: white; border: none; border-radius: 12px; font-size: 15px; cursor: pointer; white-space: nowrap; font-weight: 500; }
+  .add-btn:active { background: #0F6E56; }
+  .empty { text-align: center; color: #aaa; font-size: 14px; padding: 2rem 0; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1a1a1a; color: #f0f0f0; }
+    .stat, .habit-item { background: #2a2a2a; border-color: #3a3a3a; }
+    .stat-n { color: #f0f0f0; }
+    .nav button { color: #aaa; }
+    .nav button:hover { background: #333; }
+    .add-row input { background: #2a2a2a; border-color: #3a3a3a; color: #f0f0f0; }
+    .add-row input:focus { border-color: #1D9E75; }
+    .del-btn { color: #555; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <span class="title">Mis hábitos</span>
+    <div class="nav">
+      <button id="prev-day">‹</button>
+      <span class="day-label" id="day-label"></span>
+      <button id="next-day">›</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-n" id="s-done">0</div><div class="stat-l">Completados</div></div>
+    <div class="stat"><div class="stat-n" id="s-pct">0%</div><div class="stat-l">Del día</div></div>
+    <div class="stat"><div class="stat-n" id="s-streak">0</div><div class="stat-l">Racha máx.</div></div>
+  </div>
+
+  <div id="habit-list"></div>
+
+  <div class="add-row">
+    <input type="text" id="new-habit" placeholder="Nuevo hábito…" maxlength="50" />
+    <button class="add-btn" id="add-btn">+ Añadir</button>
+  </div>
+</div>
+
+<script>
+const KEY_H = 'ht_habits';
+const KEY_L = 'ht_log';
+let habits = [], log = {}, offset = 0;
+
+function dateKey(o) {
+  const d = new Date(); d.setDate(d.getDate() + o);
+  return d.toISOString().slice(0,10);
+}
+function dayLabel(o) {
+  const d = new Date(); d.setDate(d.getDate() + o);
+  const days = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const base = days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
+  if(o===0) return 'Hoy · ' + base;
+  if(o===-1) return 'Ayer · ' + base;
+  return base;
+}
+function load() {
+  try { habits = JSON.parse(localStorage.getItem(KEY_H)) || defaultHabits(); } catch(e) { habits = defaultHabits(); }
+  try { log = JSON.parse(localStorage.getItem(KEY_L)) || {}; } catch(e) { log = {}; }
+  render();
+}
+function save() {
+  localStorage.setItem(KEY_H, JSON.stringify(habits));
+  localStorage.setItem(KEY_L, JSON.stringify(log));
+}
+function defaultHabits() {
+  return [
+    {id:'h1', name:'Gimnasio', icon:'🏋️'},
+    {id:'h2', name:'Beber 2L de agua', icon:'💧'},
+    {id:'h3', name:'Estudiar 1h', icon:'📚'},
+    {id:'h4', name:'Dormir 7h+', icon:'🌙'},
+  ];
+}
+function getState(hid, dk) { return (log[dk]||{})[hid] || 'none'; }
+function cycleState(hid, dk) {
+  if(!log[dk]) log[dk] = {};
+  const cur = getState(hid, dk);
+  log[dk][hid] = cur==='none'?'done': cur==='done'?'fail':'none';
+  save(); render();
+}
+function calcStreak(hid) {
+  let best=0, cur=0;
+  const today = new Date();
+  for(let i=1;i<=90;i++){
+    const d=new Date(today); d.setDate(today.getDate()-i);
+    const dk=d.toISOString().slice(0,10);
+    if((log[dk]||{})[hid]==='done'){cur++;best=Math.max(best,cur);}else cur=0;
+  }
+  return best;
+}
+function maxStreak(){ let b=0; habits.forEach(h=>b=Math.max(b,calcStreak(h.id))); return b; }
+function deleteHabit(id){ if(!confirm('¿Eliminar este hábito?')) return; habits=habits.filter(h=>h.id!==id); save(); render(); }
+function pickIcon(name){
+  const n=name.toLowerCase();
+  const map={gym:'🏋️',gimn:'🏋️',agua:'💧',water:'💧',estudi:'📚',leer:'📖',libro:'📖',dormir:'🌙',sueño:'🌙',corr:'🏃',medit:'🧘',comida:'🥗',dieta:'🥗',café:'☕',vitam:'💊',inglés:'🌍',idiom:'🌍'};
+  for(const[k,v]of Object.entries(map)) if(n.includes(k)) return v;
+  return '✅';
+}
+function addHabit(){
+  const inp=document.getElementById('new-habit');
+  const name=inp.value.trim(); if(!name) return;
+  habits.push({id:'h'+Date.now(), name, icon:pickIcon(name)});
+  inp.value=''; save(); render();
+}
+function render(){
+  const dk=dateKey(offset);
+  document.getElementById('day-label').textContent=dayLabel(offset);
+  document.getElementById('next-day').disabled=offset>=0;
+  const list=document.getElementById('habit-list');
+  if(!habits.length){ list.innerHTML='<div class="empty">Añade tu primer hábito abajo ↓</div>'; }
+  else {
+    list.innerHTML=habits.map(h=>{
+      const st=getState(h.id,dk);
+      const icon=st==='done'?'✓':st==='fail'?'✗':'';
+      return `<div class="habit-item">
+        <button class="check-btn ${st}" onclick="cycleState('${h.id}','${dk}')">${icon}</button>
+        <span style="font-size:20px">${h.icon}</span>
+        <span class="habit-name">${h.name}</span>
+        <span class="streak">🔥${calcStreak(h.id)}</span>
+        <button class="del-btn" onclick="deleteHabit('${h.id}')">×</button>
+      </div>`;
+    }).join('');
+  }
+  const dl=log[dk]||{};
+  const done=habits.filter(h=>dl[h.id]==='done').length;
+  const total=habits.length;
+  document.getElementById('s-done').textContent=done;
+  document.getElementById('s-pct').textContent=total?Math.round(done/total*100)+'%':'—';
+  document.getElementById('s-streak').textContent=maxStreak();
+}
+document.getElementById('prev-day').addEventListener('click',()=>{offset--;render();});
+document.getElementById('next-day').addEventListener('click',()=>{if(offset<0){offset++;render();}});
+document.getElementById('add-btn').addEventListener('click',addHabit);
+document.getElementById('new-habit').addEventListener('keydown',e=>{if(e.key==='Enter')addHabit();});
+load();
+</script>
+</body>
+</html>
